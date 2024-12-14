@@ -117,14 +117,8 @@ mailchimp_funnel = mailchimp_action_counts.rename(index=mailchimp_actions_key)
 mailchimp_funnel = mailchimp_funnel.sort_values(ascending=False)
 
 # Recalculate start and end dates
-start_date = min(
-    customer_data["first_activation_date"].min(),
-    customer_data["cancel_date"].min()
-)
-end_date = max(
-    customer_data["first_activation_date"].max(),
-    customer_data["cancel_date"].max()
-)
+start_date = pd.Timestamp("2021-06-01")
+end_date = pd.Timestamp("2022-12-31")
 
 # Generate a full date range
 full_date_range = pd.date_range(start=start_date, end=end_date, freq="D")
