@@ -11,8 +11,8 @@ import numpy as np
 
 customer_data = pd.read_csv("data/customer_data.csv",low_memory=False)
 usage_data = pd.read_csv("data/usage_data.csv",low_memory=False)
-customer_data["first_activation_date"] = pd.to_datetime(customer_data["first_activation_date"], errors='coerce')
-customer_data["cancel_date"] = pd.to_datetime(customer_data["cancel_date"], errors='coerce')
+customer_data["first_activation_date"] = pd.to_datetime(customer_data["first_activation_date"], format="%Y-%m-%d", errors='coerce')
+customer_data["cancel_date"] = pd.to_datetime(customer_data["cancel_date"], format="%Y-%m-%d", errors='coerce')
 
 dates = pd.date_range(start="2021-06-01", end="2022-12-31", freq="D")
 # Define the North Star Metrics for each product
@@ -115,10 +115,6 @@ mailchimp_funnel = mailchimp_action_counts.rename(index=mailchimp_actions_key)
 
 # Sort actions by their frequency in descending order
 mailchimp_funnel = mailchimp_funnel.sort_values(ascending=False)
-
-# Convert dates to datetime for easy grouping
-customer_data["first_activation_date"] = pd.to_datetime(customer_data["first_activation_date"], errors='coerce')
-customer_data["cancel_date"] = pd.to_datetime(customer_data["cancel_date"], errors='coerce')
 
 # Recalculate start and end dates
 start_date = min(
