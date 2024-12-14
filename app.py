@@ -1,20 +1,16 @@
 import streamlit as st
-import pandas as pd
-import plotly as plt
-import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
-
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 import pandas as pd
-import numpy as np
 
-customer_data = pd.read_csv("data/customer_data.csv",low_memory=False)
-usage_data = pd.read_csv("data/usage_data.csv",low_memory=False)
-customer_data["first_activation_date"] = pd.to_datetime(customer_data["first_activation_date"], format="%Y-%m-%d", errors='coerce')
-customer_data["cancel_date"] = pd.to_datetime(customer_data["cancel_date"], format="%Y-%m-%d", errors='coerce')
+import pandas as pd
 
-dates = pd.date_range(start="2021-06-01", end="2022-12-31", freq="D")
+# Load the datasets
+customer_data = pd.read_csv("data/customer_data.csv", low_memory=False)
+usage_data = pd.read_csv("data/usage_data.csv", low_memory=False)
+
 # Define the North Star Metrics for each product
 north_star_metrics = {
     "TurboTax": "Tax Filings Completed",
@@ -31,8 +27,9 @@ action_keys = {
     5: "Invoice Created"  # Assuming Invoice Created is also key 5 for QuickBooks
 }
 
-# Add action type mapping to usage_data
+# Map action type IDs to names in usage_data
 usage_data["Action_Type"] = usage_data["action_type_id"].map(action_keys)
+
 
 # Calculate lifetime activated customers (first_activation_date is not null)
 lifetime_activated_customers = customer_data[~customer_data['first_activation_date'].isna()]
@@ -50,6 +47,8 @@ churned_users_by_product = customer_data[~customer_data['cancel_date'].isna()].g
 # Calculate churn rate: churned users / lifetime activated customers
 churn_rate_by_product = (churned_users_by_product / lifetime_activated_by_product * 100).fillna(0)
 
+
+
 # Prepare the customer_summary DataFrame
 customer_summary = pd.DataFrame({
     "Lifetime_Activated_Customers": lifetime_activated_by_product,
@@ -64,18 +63,39 @@ customer_summary = pd.DataFrame({
 # Add the North Star Metric description
 customer_summary["NorthStar_Metric"] = customer_summary.index.map(north_star_metrics)
 
+# Debug: Inspect intermediate outputs
+print("Lifetime Activated Customers By Product:")
+print(lifetime_activated_by_product)
+
 # Group by product name and calculate the sum of the usage counts for the relevant actions
 north_star_values = usage_data.groupby(["product_name", "Action_Type"])["usage_count"].sum().reset_index()
+
+# Debug: Check north_star_values
+print("\nNorth Star Values Before Filtering:")
+print(north_star_values)
 
 # Extract the relevant North Star metric counts for each product
 north_star_actuals = north_star_values[north_star_values["Action_Type"].isin(action_keys.values())]
 north_star_actuals = north_star_actuals.groupby("product_name")["usage_count"].sum()
 
-# Add the actual North Star metrics to the customer_summary DataFrame
+# Debug: Check north_star_actuals
+print("\nNorth Star Actuals After Filtering:")
+print(north_star_actuals)
+
+# Normalize indices for mapping
+north_star_actuals.index = north_star_actuals.index.str.strip()
+customer_summary.index = customer_summary.index.str.strip()
+
+# Map North Star Metric Value
 customer_summary["NorthStar_Metric_Value"] = customer_summary.index.map(north_star_actuals).fillna(0).astype(int)
 
 # Reset index for better readability
 customer_summary.reset_index(inplace=True)
+
+# Debug: Final customer_summary DataFrame
+print("\nFinal Customer Summary:")
+print(customer_summary)
+
 
 data = customer_summary
 
@@ -107,6 +127,7 @@ mailchimp_actions_key = {
 mailchimp_data = customer_data[customer_data["product_name"] == "Mailchimp"]
 mailchimp_usage = usage_data[usage_data['product_name'] == 'Mailchimp']
 
+
 # Count the occurrences of each action ID using the correct column name
 mailchimp_action_counts = mailchimp_usage['action_type_id'].value_counts()
 
@@ -116,36 +137,55 @@ mailchimp_funnel = mailchimp_action_counts.rename(index=mailchimp_actions_key)
 # Sort actions by their frequency in descending order
 mailchimp_funnel = mailchimp_funnel.sort_values(ascending=False)
 
-# Recalculate start and end dates
-start_date = pd.Timestamp("2021-06-01")
-end_date = pd.Timestamp("2022-12-31")
-
-# Generate a full date range
-full_date_range = pd.date_range(start=start_date, end=end_date, freq="D")
-
 # Filter data for Mailchimp
 mailchimp_data = customer_data[customer_data["product_name"] == "Mailchimp"]
 
-# Recalculate cumulative activated customers for Mailchimp
-cumulative_activated_customers_mailchimp = (
-    mailchimp_data.groupby("first_activation_date").size()
-    .reindex(full_date_range, fill_value=0)
-    .cumsum()
+# Recalculate start and end dates
+start_date = pd.Timestamp("2021-05-01")
+end_date = pd.Timestamp("2022-06-30")
+full_date_range = pd.date_range(start=start_date, end=end_date, freq="D")
+
+# Convert dates to datetime format
+mailchimp_data["first_activation_date"] = pd.to_datetime(
+    mailchimp_data["first_activation_date"], errors="coerce"
+)
+mailchimp_data["cancel_date"] = pd.to_datetime(
+    mailchimp_data["cancel_date"], errors="coerce"
 )
 
-# Recalculate cumulative cancelled customers for Mailchimp
-cumulative_cancelled_customers_mailchimp = (
-    mailchimp_data.groupby("cancel_date").size()
-    .reindex(full_date_range, fill_value=0)
-    .cumsum()
-)
+# Debug: Check unique dates in the data
+print("Unique First Activation Dates:")
+print(mailchimp_data["first_activation_date"].dropna().unique())
+print("\nUnique Cancel Dates:")
+print(mailchimp_data["cancel_date"].dropna().unique())
 
-# Recalculate active customers for Mailchimp
+# Group by and calculate cumulative activated customers
+grouped_activated_customers = mailchimp_data.groupby("first_activation_date").size()
+cumulative_activated_customers_mailchimp = grouped_activated_customers.reindex(full_date_range, fill_value=0).cumsum()
+
+# Debug: Check intermediate results for activated customers
+print("\nGrouped Activated Customers:")
+print(grouped_activated_customers)
+print("\nCumulative Activated Customers:")
+print(cumulative_activated_customers_mailchimp.head())
+
+# Group by and calculate cumulative cancelled customers
+grouped_cancelled_customers = mailchimp_data.groupby("cancel_date").size()
+cumulative_cancelled_customers_mailchimp = grouped_cancelled_customers.reindex(full_date_range, fill_value=0).cumsum()
+
+# Debug: Check intermediate results for cancelled customers
+print("\nGrouped Cancelled Customers:")
+print(grouped_cancelled_customers)
+print("\nCumulative Cancelled Customers:")
+print(cumulative_cancelled_customers_mailchimp.head())
+
+# Calculate daily active customers
 active_customers_daily_mailchimp = cumulative_activated_customers_mailchimp - cumulative_cancelled_customers_mailchimp
 
-# Validate final values
-lifetime_activated_mailchimp = cumulative_activated_customers_mailchimp.iloc[-1]
-current_active_mailchimp = active_customers_daily_mailchimp.iloc[-1]
+# Debug: Check final active customers
+print("\nActive Customers Daily (Mailchimp):")
+print(active_customers_daily_mailchimp.head())
+
 
 
 # Streamlit App
@@ -163,11 +203,11 @@ with tab1:
     with rows[0]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Product</p>", unsafe_allow_html=True)
     with rows[1]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Lifetime Activated</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>👥 Lifetime Activated</p>", unsafe_allow_html=True)
     with rows[2]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Current Active</p>", unsafe_allow_html=True)
     with rows[3]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Churn Rate</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>📉Churn Rate</p>", unsafe_allow_html=True)
     with rows[4]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Lifetime NorthStar Metric</p>", unsafe_allow_html=True)
 
@@ -233,9 +273,6 @@ with tab1:
 
         # Add vertical space between rows
         st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
-
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 with tab2:
     st.header("Mailchimp Deep Dive")
@@ -317,70 +354,70 @@ with tab2:
             )
 
     # Create a 2x2 Grid
-st.markdown("### Charts")
-chart_rows_top = st.columns(2)
+    st.markdown("### Charts")
+    chart_rows_top = st.columns(2)
 
-# Chart 1: Cumulative Lifetime Customers (Top Left)
-with chart_rows_top[0]:
-    fig1 = go.Figure()
-    fig1.add_trace(
-        go.Scatter(
-            x=cumulative_activated_customers_mailchimp.index,
-            y=cumulative_activated_customers_mailchimp.values,
-            mode="lines",
-            name="Cumulative Lifetime Customers",
-            line=dict(color="blue", width=3)
+    # Chart 1: Cumulative Lifetime Customers (Top Left)
+    with chart_rows_top[0]:
+        fig1 = go.Figure()
+        fig1.add_trace(
+            go.Scatter(
+                x=cumulative_activated_customers_mailchimp.index,
+                y=cumulative_activated_customers_mailchimp.values,
+                mode="lines",
+                name="Cumulative Lifetime Customers",
+                line=dict(color="blue", width=3)
+            )
         )
-    )
-    fig1.update_layout(
-        title="Cumulative Lifetime Customers",
-        xaxis_title="Date",
-        yaxis_title="Number of Customers",
-        legend_title="Metrics",
-        template="plotly_white"
-    )
-    st.plotly_chart(fig1, use_container_width=True)
-
-# Chart 2: Active Customers by Date (Top Right)
-with chart_rows_top[1]:
-    fig2 = go.Figure()
-    fig2.add_trace(
-        go.Scatter(
-            x=active_customers_daily_mailchimp.index,
-            y=active_customers_daily_mailchimp.values,
-            mode="lines",
-            name="Active Customers by Date",
-            line=dict(color="green", width=3)
+        fig1.update_layout(
+            title="Cumulative Lifetime Customers",
+            xaxis_title="Date",
+            yaxis_title="Number of Customers",
+            legend_title="Metrics",
+            template="plotly_white"
         )
-    )
-    fig2.update_layout(
-        title="Daily Active Customers",
-        xaxis_title="Date",
-        yaxis_title="Number of Active Customers",
-        legend_title="Metrics",
-        template="plotly_white"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True)
 
-#  Bottom Row
-chart_rows_bottom = st.columns(2)
-# Bottom Left Chart: Funnel Chart for User Actions
-with chart_rows_bottom[0]:
-    fig_funnel = go.Figure(go.Funnel(
-        y=mailchimp_funnel.index,  # Action names
-        x=mailchimp_funnel.values,  # Counts of users performing each action
-        textinfo="value+percent initial",  # Display both values and percentages
-        marker=dict(color=["#FFE01B", "#FFC30F", "#FFB000", "#FF8000", "#FF6000", "#FF4000", "#FF2000"])
-    ))
+    # Chart 2: Active Customers by Date (Top Right)
+    with chart_rows_top[1]:
+        fig2 = go.Figure()
+        fig2.add_trace(
+            go.Scatter(
+                x=active_customers_daily_mailchimp.index,
+                y=active_customers_daily_mailchimp.values,
+                mode="lines",
+                name="Active Customers by Date",
+                line=dict(color="green", width=3)
+            )
+        )
+        fig2.update_layout(
+            title="Daily Active Customers",
+            xaxis_title="Date",
+            yaxis_title="Number of Active Customers",
+            legend_title="Metrics",
+            template="plotly_white"
+        )
+        st.plotly_chart(fig2, use_container_width=True)
 
-    fig_funnel.update_layout(
-        title="Mailchimp User Actions Funnel",
-        yaxis_title="Actions",
-        xaxis_title="Users",
-        margin=dict(l=50, r=50, t=50, b=50)
-    )
+    #  Bottom Row
+    chart_rows_bottom = st.columns(2)
+    # Bottom Left Chart: Funnel Chart for User Actions
+    with chart_rows_bottom[0]:
+        fig_funnel = go.Figure(go.Funnel(
+            y=mailchimp_funnel.index,  # Action names
+            x=mailchimp_funnel.values,  # Counts of users performing each action
+            textinfo="value+percent initial",  # Display both values and percentages
+            marker=dict(color=["#FFE01B", "#FFC30F", "#FFB000", "#FF8000", "#FF6000", "#FF4000", "#FF2000"])
+        ))
 
-    st.plotly_chart(fig_funnel, use_container_width=True)
+        fig_funnel.update_layout(
+            title="Mailchimp User Actions Funnel",
+            yaxis_title="Actions",
+            xaxis_title="Users",
+            margin=dict(l=50, r=50, t=50, b=50)
+        )
 
-with chart_rows_bottom[1]:
-    st.empty()
+        st.plotly_chart(fig_funnel, use_container_width=True)
+
+    with chart_rows_bottom[1]:
+        st.empty()
