@@ -1,11 +1,8 @@
+import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
-
-import pandas as pd
-
-import pandas as pd
 
 # Load the datasets
 customer_data = pd.read_csv("data/customer_data.csv", low_memory=False)
@@ -21,15 +18,15 @@ north_star_metrics = {
 
 # Map the North Star metric actions for easier aggregation
 action_keys = {
-    3: "Filing Completed",
-    2: "Email Campaigns Sent",
-    5: "Budget Created",
-    5: "Invoice Created"  # Assuming Invoice Created is also key 5 for QuickBooks
+    (3, "TurboTax"): "Filing Completed",
+    (2, "Mailchimp"): "Email Campaigns Sent",
+    (5, "Mint"): "Budget Created",
+    (5, "QuickBooks"): "Invoice Created"
 }
-
 # Map action type IDs to names in usage_data
-usage_data["Action_Type"] = usage_data["action_type_id"].map(action_keys)
-
+usage_data["Action_Type"] = usage_data.apply(
+    lambda row: action_keys.get((row["action_type_id"], row["product_name"]), "Unknown Action"), axis=1
+)
 
 # Calculate lifetime activated customers (first_activation_date is not null)
 lifetime_activated_customers = customer_data[~customer_data['first_activation_date'].isna()]
@@ -47,9 +44,6 @@ churned_users_by_product = customer_data[~customer_data['cancel_date'].isna()].g
 # Calculate churn rate: churned users / lifetime activated customers
 churn_rate_by_product = (churned_users_by_product / lifetime_activated_by_product * 100).fillna(0)
 
-
-
-# Prepare the customer_summary DataFrame
 customer_summary = pd.DataFrame({
     "Lifetime_Activated_Customers": lifetime_activated_by_product,
     "Current_Active_Customers": current_active_by_product,
@@ -59,42 +53,38 @@ customer_summary = pd.DataFrame({
     "Current_Active_Customers": int,
     "Churn_Rate (%)": float
 })
+customer_summary.reset_index(inplace=True)
 
-# Add the North Star Metric description
-customer_summary["NorthStar_Metric"] = customer_summary.index.map(north_star_metrics)
-
-# Debug: Inspect intermediate outputs
-print("Lifetime Activated Customers By Product:")
-print(lifetime_activated_by_product)
 
 # Group by product name and calculate the sum of the usage counts for the relevant actions
-north_star_values = usage_data.groupby(["product_name", "Action_Type"])["usage_count"].sum().reset_index()
+north_star_values = usage_data.groupby(["product_name", "Action_Type","action_type_id"])["usage_count"].sum().reset_index()
 
-# Debug: Check north_star_values
-print("\nNorth Star Values Before Filtering:")
-print(north_star_values)
+valid_combinations = set(action_keys.keys())
 
-# Extract the relevant North Star metric counts for each product
-north_star_actuals = north_star_values[north_star_values["Action_Type"].isin(action_keys.values())]
-north_star_actuals = north_star_actuals.groupby("product_name")["usage_count"].sum()
+north_star_actuals = north_star_values[
+    north_star_values.apply(
+        lambda row: (row["action_type_id"], row["product_name"]) in valid_combinations, axis=1
+    )
+]
 
-# Debug: Check north_star_actuals
-print("\nNorth Star Actuals After Filtering:")
-print(north_star_actuals)
+north_star_actuals = north_star_actuals[["product_name", "usage_count"]]
 
-# Normalize indices for mapping
-north_star_actuals.index = north_star_actuals.index.str.strip()
-customer_summary.index = customer_summary.index.str.strip()
+# Merge customer_summary with north_star_actuals on product_name
+customer_summary = pd.merge(
+    customer_summary, 
+    north_star_actuals, 
+    how="left",  # Left join to preserve all rows in customer_summary
+    on="product_name"
+)
 
-# Map North Star Metric Value
-customer_summary["NorthStar_Metric_Value"] = customer_summary.index.map(north_star_actuals).fillna(0).astype(int)
+# Rename usage_count column for clarity
+customer_summary.rename(columns={"usage_count": "NorthStar_Metric_Value"}, inplace=True)
+
+# Fill any NaN values in the NorthStar_Metric_Value column with 0
+customer_summary["NorthStar_Metric_Value"] = customer_summary["NorthStar_Metric_Value"].fillna(0).astype(int)
 
 # Reset index for better readability
 customer_summary.reset_index(inplace=True)
-
-# Debug: Final customer_summary DataFrame
-print("\nFinal Customer Summary:")
-print(customer_summary)
 
 
 data = customer_summary
@@ -153,50 +143,35 @@ mailchimp_data["cancel_date"] = pd.to_datetime(
     mailchimp_data["cancel_date"], errors="coerce"
 )
 
-# Debug: Check unique dates in the data
-print("Unique First Activation Dates:")
-print(mailchimp_data["first_activation_date"].dropna().unique())
-print("\nUnique Cancel Dates:")
-print(mailchimp_data["cancel_date"].dropna().unique())
 
 # Group by and calculate cumulative activated customers
 grouped_activated_customers = mailchimp_data.groupby("first_activation_date").size()
 cumulative_activated_customers_mailchimp = grouped_activated_customers.reindex(full_date_range, fill_value=0).cumsum()
 
-# Debug: Check intermediate results for activated customers
-print("\nGrouped Activated Customers:")
-print(grouped_activated_customers)
-print("\nCumulative Activated Customers:")
-print(cumulative_activated_customers_mailchimp.head())
 
 # Group by and calculate cumulative cancelled customers
 grouped_cancelled_customers = mailchimp_data.groupby("cancel_date").size()
 cumulative_cancelled_customers_mailchimp = grouped_cancelled_customers.reindex(full_date_range, fill_value=0).cumsum()
 
-# Debug: Check intermediate results for cancelled customers
-print("\nGrouped Cancelled Customers:")
-print(grouped_cancelled_customers)
-print("\nCumulative Cancelled Customers:")
-print(cumulative_cancelled_customers_mailchimp.head())
-
 # Calculate daily active customers
 active_customers_daily_mailchimp = cumulative_activated_customers_mailchimp - cumulative_cancelled_customers_mailchimp
 
-# Debug: Check final active customers
-print("\nActive Customers Daily (Mailchimp):")
-print(active_customers_daily_mailchimp.head())
 
+# Group by acquisition channel and count customers
+channel_breakdown = mailchimp_data.groupby("channel").size().reset_index(name="Customer_Count")
 
+# Sort by Customer Count
+channel_breakdown = channel_breakdown.sort_values(by="Customer_Count", ascending=False)
 
 # Streamlit App
-st.title("Intuit Dashboard")
+st.title("Mailchimp Case Study")
 
 # Create tab for Intuit Overview
 tab1, tab2 = st.tabs(["Intuit Overview", "Mailchimp Deep Dive"])
 
 with tab1:
-    st.header("Intuit Overview")
-    st.markdown("### Executive Dashboard")
+    st.header("Intuit Executive Overview")
+    st.markdown("#### How is the business doing?")
 
     # Create the grid headers
     rows = st.columns([1, 1, 1, 1, 1])
@@ -205,11 +180,11 @@ with tab1:
     with rows[1]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>👥 Lifetime Activated</p>", unsafe_allow_html=True)
     with rows[2]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Current Active</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>⚡Current Active</p>", unsafe_allow_html=True)
     with rows[3]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>📉Churn Rate</p>", unsafe_allow_html=True)
     with rows[4]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Lifetime NorthStar Metric</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>⭐ Lifetime NorthStar Metric</p>", unsafe_allow_html=True)
 
     # Loop through products to create tiles
     for i, row in data.iterrows():
@@ -276,7 +251,7 @@ with tab1:
 
 with tab2:
     st.header("Mailchimp Deep Dive")
-
+    st.markdown("#### How is Mailchimp doing?")
     # Wireframe for tiles
     st.markdown("### Metrics Overview")
     rows = st.columns([1, 1, 1, 1, 1])
@@ -285,13 +260,13 @@ with tab2:
     with rows[0]:
         st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Product</p>", unsafe_allow_html=True)
     with rows[1]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Lifetime Activated</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>👥 Lifetime Activated</p>", unsafe_allow_html=True)
     with rows[2]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Current Active</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>⚡Current Active</p>", unsafe_allow_html=True)
     with rows[3]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Churn Rate</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>📉Churn Rate</p>", unsafe_allow_html=True)
     with rows[4]:
-        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>Lifetime NorthStar Metric</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-weight:bold; font-size:16px;'>⭐ Lifetime NorthStar Metric</p>", unsafe_allow_html=True)
 
     # Populate the tiles with color
     for i, row in data[data['product_name'] == "Mailchimp"].iterrows():
@@ -420,4 +395,16 @@ with tab2:
         st.plotly_chart(fig_funnel, use_container_width=True)
 
     with chart_rows_bottom[1]:
-        st.empty()
+         # Create a bar chart for channel breakdown
+        fig_channel = px.bar(
+            channel_breakdown,
+            x="channel",
+            y="Customer_Count",
+            title="Mailchimp Customer Channel Breakdown",
+            labels={"channel": "Acquisition Channel", "Customer_Count": "Number of Customers"},
+            color="Customer_Count",
+            color_continuous_scale="Blues"
+        )
+
+        # Add the chart to Streamlit
+        st.plotly_chart(fig_channel, use_container_width=True)
