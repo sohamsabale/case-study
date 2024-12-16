@@ -303,8 +303,10 @@ with tab1:
         st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
     st.markdown("### Insights")
     st.write(
-        "From the metrics above, it seems like all products have roughly equal number of lifetime activated(~2K) and current active(~1.4K) users. Additoinally, churn rates(~30%) are also similar."
-    )
+        """Based on the metrics above \n
+        1.All products have roughly equal number of lifetime activated(~2K) and current active(~1.4K) users. \n
+        2. Additoinally, churn rates(~30%) are also similar."
+    """)
 
 with tab2:
     st.header("Mailchimp Deep Dive")
@@ -467,8 +469,10 @@ with tab2:
         st.plotly_chart(fig_channel, use_container_width=True)
     st.markdown("### Insights")
     st.write(
-        """ From the funnel chart above, we see there's a big drop between the Campaigns Created Step and the Subsribers Added Step. \n
-        Only 14% of customers "
+        """ From the funnel chart above, we see \n 
+        1. There's a big drop between the Campaigns Created Step and the Subsribers Added Step. \n
+        2. Only 14% of customers that login actually end up sending an email campaign \n
+        3. Direct channel brings in the most customers
     """)
     
 
@@ -576,5 +580,7 @@ with tab3:
         st.plotly_chart(fig_comparison, use_container_width=True)
     st.markdown("### Insights")
     st.write(
-        "From the charts above, we can see that the churned users login activity rate is lower compared to active users. However, the rest of the activity types are equivalent to active users. Implaying that the churned users just dont login to the product UI. This represents an opportunity to reduce churn by identifying users with low login rates."
-    )
+        """From the charts above, we can see \n
+        1. The churned users login activity rate is lower compared to active users. However, the rest of the activity types are equivalent to active users. Implaying that the churned users just dont login to the product UI. 
+        2. This represents an opportunity to reduce churn by identifying users with low login rates."
+    """)
