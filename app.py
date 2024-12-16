@@ -217,12 +217,13 @@ churned_users_by_channel_mailchimp = mailchimp_data[~mailchimp_data['cancel_date
 churn_rate_by_channel_mailchimp = (churned_users_by_channel_mailchimp / lifetime_activated_by_channel_mailchimp * 100).fillna(0)
 
 # Streamlit App
-st.title("Mailchimp Case Study")
+
 st.set_page_config(
     page_title="Soham Sabale - Intuit Conversation",  # This is the tab name
     page_icon="📊",                   # This is the icon shown in the browser tab
     
 )
+st.title("Mailchimp Case Study")
 # Create tab for Intuit Overview
 tab1, tab2, tab3 = st.tabs(["Intuit Overview", "Mailchimp Deep Dive", "Mailchimp Churned Users Analysis"])
 
