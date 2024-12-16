@@ -112,8 +112,8 @@ mailchimp_actions_key = {
     4: "Subscribers Added",
     3: "Templates Edited",
     2: "Email Campaigns Sent", 
-    1: "Campaigns Deleted",
-    6: "Forms Drafted"
+    1: "Email Campaigns Deleted",
+    6: "Email Campaigns Un-sent"
 }
 mailchimp_data = customer_data[customer_data["product_name"] == "Mailchimp"]
 mailchimp_usage = usage_data[usage_data['product_name'] == 'Mailchimp']
@@ -200,8 +200,8 @@ action_type_mapping = {
     4: "Subscribers Added",
     3: "Templates Edited",
     2: "Email Campaigns Sent", 
-    1: "Campaigns Deleted",
-    6: "Forms Drafted"
+    1: "Email Campaigns Deleted",
+    6: "Email Campaigns Un-sent"
 }
 action_comparison["Action_Type"] = action_comparison["action_type_id"].map(action_type_mapping)
 
@@ -465,7 +465,11 @@ with tab2:
 
         # Add the chart to Streamlit
         st.plotly_chart(fig_channel, use_container_width=True)
-    
+    st.markdown("### Insights")
+    st.write(
+        """ From the funnel chart above, we see there's a big drop between the Campaigns Created Step and the Subsribers Added Step. \n
+        Only 14% of customers "
+    """)
     
 
 with tab3:
