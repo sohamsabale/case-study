@@ -218,7 +218,11 @@ churn_rate_by_channel_mailchimp = (churned_users_by_channel_mailchimp / lifetime
 
 # Streamlit App
 st.title("Mailchimp Case Study")
-
+st.set_page_config(
+    page_title="Soham Sabale - Intuit Conversation",  # This is the tab name
+    page_icon="📊",                   # This is the icon shown in the browser tab
+    
+)
 # Create tab for Intuit Overview
 tab1, tab2, tab3 = st.tabs(["Intuit Overview", "Mailchimp Deep Dive", "Mailchimp Churned Users Analysis"])
 
@@ -305,7 +309,7 @@ with tab1:
     st.write(
         """Based on the metrics above \n
         1.All products have roughly equal number of lifetime activated(~2K) and current active(~1.4K) users. \n
-        2. Additoinally, churn rates(~30%) are also similar."
+        2.Additoinally, churn rates(~30%) are also similar."
     """)
 
 with tab2:
