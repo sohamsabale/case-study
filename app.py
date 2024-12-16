@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+import plotly as plt
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -106,7 +107,7 @@ descriptions = {
 }
 
 mailchimp_actions_key = {
-    5: "Campaigns Started", 
+    5: "Log-Ins", 
     7: "Campaigns Created",
     4: "Subscribers Added",
     3: "Templates Edited",
@@ -126,9 +127,6 @@ mailchimp_funnel = mailchimp_action_counts.rename(index=mailchimp_actions_key)
 
 # Sort actions by their frequency in descending order
 mailchimp_funnel = mailchimp_funnel.sort_values(ascending=False)
-
-# Filter data for Mailchimp
-mailchimp_data = customer_data[customer_data["product_name"] == "Mailchimp"]
 
 # Recalculate start and end dates
 start_date = pd.Timestamp("2021-05-01")
@@ -163,11 +161,66 @@ channel_breakdown = mailchimp_data.groupby("channel").size().reset_index(name="C
 # Sort by Customer Count
 channel_breakdown = channel_breakdown.sort_values(by="Customer_Count", ascending=False)
 
+# Filter churned Mailchimp users
+churned_mailchimp_users = mailchimp_data[~mailchimp_data["cancel_date"].isna()]
+
+# Filter non-churned Mailchimp users
+non_churned_mailchimp_users = mailchimp_data[mailchimp_data["cancel_date"].isna()]
+
+# Merge churned Mailchimp users with usage_data
+churned_mailchimp_usage = usage_data.merge(churned_mailchimp_users[["customerid"]], on="customerid")
+
+# Merge non-churned Mailchimp users with usage_data
+non_churned_mailchimp_usage = usage_data.merge(non_churned_mailchimp_users[["customerid"]], on="customerid")
+
+# Group and calculate action counts for churned and non-churned users
+churned_actions = churned_mailchimp_usage.groupby("action_type_id")["usage_count"].sum().reset_index()
+non_churned_actions = non_churned_mailchimp_usage.groupby("action_type_id")["usage_count"].sum().reset_index()
+
+# Total actions
+churned_total = churned_actions["usage_count"].sum()
+non_churned_total = non_churned_actions["usage_count"].sum()
+
+# Normalize to percentages
+churned_actions["Percentage"] = churned_actions["usage_count"] / churned_total * 100
+non_churned_actions["Percentage"] = non_churned_actions["usage_count"] / non_churned_total * 100
+
+# Merge churned and non-churned action percentages
+action_comparison = pd.merge(
+    churned_actions.rename(columns={"Percentage": "Churned_Percentage"}),
+    non_churned_actions.rename(columns={"Percentage": "Non_Churned_Percentage"}),
+    on="action_type_id",
+    how="outer"
+).fillna(0)
+
+# Map action_type_id to descriptive names
+action_type_mapping = {
+    5: "Campaigns Created ", 
+    7: "Log-Ins",
+    4: "Subscribers Added",
+    3: "Templates Edited",
+    2: "Email Campaigns Sent", 
+    1: "Campaigns Deleted",
+    6: "Forms Drafted"
+}
+action_comparison["Action_Type"] = action_comparison["action_type_id"].map(action_type_mapping)
+
+# Data for plotting
+action_types = action_comparison["Action_Type"]
+churned_percentage = action_comparison["Churned_Percentage"]
+non_churned_percentage = action_comparison["Non_Churned_Percentage"]
+
+lifetime_activated_customers_mailchimp = mailchimp_data[~mailchimp_data['first_activation_date'].isna()]
+lifetime_activated_by_channel_mailchimp = lifetime_activated_customers_mailchimp.groupby('channel').size()
+churned_users_by_channel_mailchimp = mailchimp_data[~mailchimp_data['cancel_date'].isna()].groupby('channel').size()
+# Calculate churn rate: churned users / lifetime activated customers
+churn_rate_by_channel_mailchimp = (churned_users_by_channel_mailchimp / lifetime_activated_by_channel_mailchimp * 100).fillna(0)
+
 # Streamlit App
 st.title("Mailchimp Case Study")
 
 # Create tab for Intuit Overview
-tab1, tab2 = st.tabs(["Intuit Overview", "Mailchimp Deep Dive"])
+tab1, tab2, tab3 = st.tabs(["Intuit Overview", "Mailchimp Deep Dive", "Mailchimp Churned Users Analysis"])
 
 with tab1:
     st.header("Intuit Executive Overview")
@@ -248,6 +301,10 @@ with tab1:
 
         # Add vertical space between rows
         st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+    st.markdown("### Insights")
+    st.write(
+        "From the metrics above, it seems like all products have roughly equal number of lifetime activated(~2K) and current active(~1.4K) users. Additoinally, churn rates(~30%) are also similar."
+    )
 
 with tab2:
     st.header("Mailchimp Deep Dive")
@@ -408,3 +465,112 @@ with tab2:
 
         # Add the chart to Streamlit
         st.plotly_chart(fig_channel, use_container_width=True)
+    
+    
+
+with tab3:
+    st.header("Mailchimp Deep Dive - Churned Users")
+    st.markdown("#### What can we learn about churned users?")
+    # Wireframe for tiles
+    # Create a 2x2 Grid
+    chart_rows_top = st.columns(1)
+
+    # Chart 1: Cumulative Lifetime Customers (Top Left)
+    with chart_rows_top[0]:
+        # Define the Plotly figure
+        fig_comparison = go.Figure()
+
+        # Add bars for churned users
+        fig_comparison.add_trace(
+            go.Bar(
+                x=action_types,
+                y=churned_percentage,
+                name="Churned Users",
+                marker=dict(color="red"),
+                text=[f"{v:.1f}%" for v in churned_percentage],
+                textposition="outside",
+            )
+        )
+
+        # Add bars for non-churned users
+        fig_comparison.add_trace(
+            go.Bar(
+                x=action_types,
+                y=non_churned_percentage,
+                name="Non-Churned Users",
+                marker=dict(color="green"),
+                text=[f"{v:.1f}%" for v in non_churned_percentage],
+                textposition="outside",
+            )
+        )
+
+        # Update layout
+        fig_comparison.update_layout(
+            barmode="group",
+            title="Churned vs Active User Actions (Percentages)",
+            xaxis_title="Action Type",
+            yaxis_title="Percentage of Actions (%)",
+            legend_title="User Type",
+            template="plotly_white",
+            xaxis=dict(tickangle=45),  # Rotate x-axis labels
+        )
+
+        # Render the chart in Streamlit
+        st.plotly_chart(fig_comparison, use_container_width=True)
+    
+    chart_rows_bottom = st.columns(1)
+    with chart_rows_bottom[0]:
+        # Define the Plotly figure
+        fig_comparison = go.Figure()
+
+        # Add bars for churned users
+        fig_comparison.add_trace(
+            go.Bar(
+                x=churned_users_by_channel_mailchimp.index,
+                y=churned_users_by_channel_mailchimp.values,
+                name="Number of Churned Users",
+                marker=dict(color="red"),
+                text=[f"{v}" for v in churned_users_by_channel_mailchimp.values],
+                textposition="outside",
+            )
+        )
+
+        # Add a line for churn rate with labels
+        fig_comparison.add_trace(
+            go.Scatter(
+                x=churn_rate_by_channel_mailchimp.index,
+                y=churn_rate_by_channel_mailchimp.values,
+                mode="lines+markers+text",
+                name="Churn Rate (%)",
+                marker=dict(color="blue"),
+                line=dict(width=2),
+                text=[f"{v:.1f}%" for v in churn_rate_by_channel_mailchimp.values],
+                textposition="top center",
+                textfont=dict(color="black")
+            )
+        )
+
+        # Update layout
+        fig_comparison.update_layout(
+            barmode="group",
+            title="Churned Users and Churn Rate by Channel",
+            xaxis_title="Channel",
+            yaxis=dict(title="Number of Churned Users", side="left"),
+            yaxis2=dict(
+                title="Churn Rate (%)",
+                overlaying="y",
+                side="right",
+                range=[0, 40],  # Set churn rate axis to 0-40%
+                tickformat=".0f%%",  # Display as percentage
+            ),
+            legend_title="Metrics",
+            template="plotly_white",
+            xaxis=dict(tickangle=45),
+        )
+
+        # Render the chart in Streamlit
+        st.plotly_chart(fig_comparison, use_container_width=True)
+    st.markdown("### Insights")
+    st.write(
+        "From the charts above, we can see that the churned users login activity rate is lower compared to active users. However, the rest of the activity types are equivalent to active users. Implaying that the churned users just dont login to the product UI. This represents an opportunity to reduce churn by identifying users with low login rates."
+    )
